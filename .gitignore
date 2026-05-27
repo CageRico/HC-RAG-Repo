@@ -27,6 +27,21 @@ data/multidoc2025/reviewed/*
 *.log
 *.tmp
 
+# Manuscript/protocol files are kept outside the code-only release.
+HC-RAG-new.tex
+EXPERIMENTS_REPRODUCIBILITY.md
+new.md
+
+# Local experiment helpers and diagnostics.
+run_e2_e3.sh
+run_e3.sh
+scripts/_*.py
+scripts/*backup*.py
+scripts/diagnose_predictions.py
+scripts/run_e2_full.sh
+scripts/smoke_test_baselines.py
+scripts/supplement_s3s5.py
+
 .venv/
 venv/
 env/

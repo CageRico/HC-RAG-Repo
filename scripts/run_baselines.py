@@ -1,17 +1,15 @@
-"""
+﻿"""
 Baseline model evaluation for HC-RAG comparison.
 
 Implements all baselines from Table 2 of the paper:
   Retriever-level : BM25, DPR, Contriever
   System-level    : Vanilla RAG, Self-RAG, GraphRAG, RAPTOR, TAT-LLM, TAPEX-RAG
 
-FAIRNESS GUARANTEE (new.md §3.4):
-  - Same generator (DeepSeek) for ALL baselines and HC-RAG
-  - Same unified prompt template (UNIFIED_PROMPT)
-  - Retrieval top-k is recorded as TOP_K_EVIDENCE = 5 for this baseline runner
-  - Same context budget = CONTEXT_BUDGET_WORDS = 3000 words (~4k tokens)
-  - Same temperature = 0
-  - Same evaluation script
+FAIRNESS CONTROLS:
+  - All RAG-style methods use the same generator, prompt template,
+    decoding setting, maximum context length, and evidence serialization format.
+  - Retrieval budgets and top-k settings are recorded in released
+    configurations and run metadata.
 
 For datasets with inline context (FinQA, TAT-QA, FinanceBench, DocFinQA):
   chunks are built from the sample's own "context" field.
@@ -48,7 +46,7 @@ from src.evaluation import BenchmarkEvaluator
 
 
 # ---------------------------------------------------------------------------
-# Fairness constants — ALL baselines must use these values
+# Baseline runner settings recorded in run metadata and released configs.
 # ---------------------------------------------------------------------------
 
 TOP_K_EVIDENCE = 5          # top-k evidence units retrieved per query
@@ -78,7 +76,7 @@ def _make_generator(config: dict):
 
 
 def _call_llm(client, model: str, evidence: str, question: str, config: dict) -> str:
-    """Unified LLM call — all baselines use the same prompt template."""
+    """Unified LLM call; all baselines use the same prompt template."""
     gen = config["generation"]
     # Enforce context budget
     words = evidence.split()
@@ -637,7 +635,7 @@ class TAPEXRAGBaseline:
 
 # ---------------------------------------------------------------------------
 # Shared flat chunk pool for Multi-Doc-2025 (no inline context)
-# Built from raw HTML documents — independent of HC-RAG's hierarchical index
+# Built from raw HTML documents independently of HC-RAG's hierarchical index
 # to ensure fair baseline comparison.
 # ---------------------------------------------------------------------------
 

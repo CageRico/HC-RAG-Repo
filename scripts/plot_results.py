@@ -1,23 +1,23 @@
-"""
+﻿"""
 Reproduce all figures in the HC-RAG paper from evaluation outputs.
 
 Figures produced:
-  Figure 1 – Framework overview diagram (text description, no data needed)
-  Figure 2 – Index structure diagram (text description, no data needed)
-  Figure 3 – Encoder architecture diagram (text description, no data needed)
-  Figure 4 – Fusion network diagram (text description, no data needed)
-  Figure 5 – Scalability analysis (latency vs document count)
-  Figure 6 – Fusion weight λ distribution by intent type (composite)
-  Figure 7 – Robustness analysis (F1 vs distractor count)
+  Figure 1 -Framework overview diagram (text description, no data needed)
+  Figure 2 -Index structure diagram (text description, no data needed)
+  Figure 3 -Encoder architecture diagram (text description, no data needed)
+  Figure 4 -Fusion network diagram (text description, no data needed)
+  Figure 5 -Scalability analysis (latency vs document count)
+  Figure 6 -Fusion weight alpha distribution by intent type (composite)
+  Figure 7 -Robustness analysis (F1 vs distractor count)
 
 Figures 1-4 are architecture diagrams drawn in the paper; they cannot be
 reproduced from data.  This script generates Figures 5, 6, and 7.
 
 Additionally, this script produces:
-  Table 2  – Overall performance comparison (all 5 datasets)
-  Table 3  – Efficiency metrics comparison
-  Table 4  – Ablation study results
-  Table 6  – Cross-document reasoning evaluation
+  Table 2  -Overall performance comparison (all 5 datasets)
+  Table 3  -Efficiency metrics comparison
+  Table 4  -Ablation study results
+  Table 6  -Cross-document reasoning evaluation
 
 Usage:
   # From evaluation outputs (recommended)
@@ -66,7 +66,7 @@ COLORS = {
     "comparison":    "#F4A261",
 }
 
-# Mapping from baseline script name → display name
+# Mapping from baseline script name todisplay name
 BASELINE_DISPLAY = {
     "bm25":        "BM25+DS-V4",
     "dpr":         "DPR+DS-V4",
@@ -113,7 +113,7 @@ def load_predictions(results_dir: str, dataset: str, split: str = "test") -> Lis
 
 
 # ---------------------------------------------------------------------------
-# Figure 5 – Scalability (latency vs document count)
+# Figure 5 -Scalability (latency vs document count)
 # ---------------------------------------------------------------------------
 
 def plot_scalability(data: Dict, save_path: str):
@@ -145,7 +145,7 @@ def plot_scalability(data: Dict, save_path: str):
 
 
 # ---------------------------------------------------------------------------
-# Figure 6 – Fusion weight λ distribution (composite: violin + KDE)
+# Figure 6 -Fusion weight alpha distribution (composite: violin + KDE)
 # ---------------------------------------------------------------------------
 
 def plot_fusion_weights(predictions: List[Dict], save_path: str):
@@ -167,7 +167,7 @@ def plot_fusion_weights(predictions: List[Dict], save_path: str):
     fig = plt.figure(figsize=(12, 4.5))
     gs  = GridSpec(1, 2, figure=fig, wspace=0.35)
 
-    # 6a – violin plot
+    # 6a -violin plot
     ax1 = fig.add_subplot(gs[0])
     intents = ["calculation", "trend", "fact", "comparison"]
     data_6a = [intent_weights.get(i, [0.5]) for i in intents]
@@ -178,12 +178,12 @@ def plot_fusion_weights(predictions: List[Dict], save_path: str):
         pc.set_alpha(0.7)
     ax1.set_xticks(positions)
     ax1.set_xticklabels(["Calculation", "Trend", "Fact", "Comparison"], fontsize=10)
-    ax1.set_ylabel("Fusion Weight λ", fontsize=11)
-    ax1.set_title("(a) λ Distribution by Intent", fontsize=11)
+    ax1.set_ylabel("Fusion Weight alpha", fontsize=11)
+    ax1.set_title("(a) alpha Distribution by Intent", fontsize=11)
     ax1.set_ylim(0, 1)
     ax1.axhline(0.5, color="gray", linestyle="--", linewidth=0.8)
 
-    # 6b – KDE
+    # 6b -KDE
     ax2 = fig.add_subplot(gs[1])
     from scipy.stats import gaussian_kde
     x = np.linspace(0, 1, 200)
@@ -194,13 +194,13 @@ def plot_fusion_weights(predictions: List[Dict], save_path: str):
         kde = gaussian_kde(vals, bw_method=0.15)
         ax2.plot(x, kde(x), label=intent.capitalize(),
                  color=COLORS[intent], linewidth=2)
-    ax2.set_xlabel("Fusion Weight λ", fontsize=11)
+    ax2.set_xlabel("Fusion Weight alpha", fontsize=11)
     ax2.set_ylabel("Density", fontsize=11)
-    ax2.set_title("(b) KDE of λ by Intent", fontsize=11)
+    ax2.set_title("(b) KDE of alpha by Intent", fontsize=11)
     ax2.legend(fontsize=9)
     ax2.set_xlim(0, 1)
 
-    fig.suptitle("Figure 6: Fusion Weight λ Distribution Analysis",
+    fig.suptitle("Figure 6: Fusion Weight alpha Distribution Analysis",
                  fontsize=13, fontweight="bold")
     plt.savefig(save_path, dpi=150)
     plt.close()
@@ -208,7 +208,7 @@ def plot_fusion_weights(predictions: List[Dict], save_path: str):
 
 
 # ---------------------------------------------------------------------------
-# Figure 7 – Robustness (F1 vs distractor count)
+# Figure 7 -Robustness (F1 vs distractor count)
 # ---------------------------------------------------------------------------
 
 def plot_robustness(data: Dict, save_path: str):
@@ -241,7 +241,7 @@ def plot_robustness(data: Dict, save_path: str):
 
 
 # ---------------------------------------------------------------------------
-# Table 2 – Overall performance comparison
+# Table 2 -Overall performance comparison
 # ---------------------------------------------------------------------------
 
 def plot_table2(results_by_dataset: Dict[str, Dict], save_path: str,
@@ -305,7 +305,7 @@ def plot_table2(results_by_dataset: Dict[str, Dict], save_path: str,
 
 
 # ---------------------------------------------------------------------------
-# Table 4 – Ablation study
+# Table 4 -Ablation study
 # ---------------------------------------------------------------------------
 
 def plot_ablation(save_path: str):
@@ -368,20 +368,20 @@ def _demo_fusion_predictions() -> List[Dict]:
     """Synthetic fusion weight data matching paper Figure 6 description."""
     rng = np.random.default_rng(42)
     preds = []
-    # calculation: median λ ≈ 0.32 (table-heavy)
+    # calculation: median alpha >=0.32 (table-heavy)
     for w in rng.beta(2, 5, 400):
         preds.append({"fusion_weight": float(w), "intent": "calculation"})
-    # trend: median λ ≈ 0.68 (text-heavy)
+    # trend: median alpha >=0.68 (text-heavy)
     for w in rng.beta(5, 2, 400):
         preds.append({"fusion_weight": float(w), "intent": "trend"})
-    # fact: roughly uniform, median ≈ 0.52
+    # fact: roughly uniform, median >=0.52
     for w in rng.beta(2, 2, 400):
         preds.append({"fusion_weight": float(w), "intent": "fact"})
     return preds
 
 
 # ---------------------------------------------------------------------------
-# Table 4 (new.md E3) – Evidence Retrieval Performance
+# Table 4 (E3): Evidence Retrieval Performance
 # ---------------------------------------------------------------------------
 
 DEMO_EVIDENCE = {
@@ -397,7 +397,7 @@ DEMO_EVIDENCE = {
 
 def plot_evidence_retrieval(data: Dict, save_path: str):
     """
-    Grouped bar chart for E3 Evidence Retrieval Performance (new.md Table 4).
+    Grouped bar chart for E3 Evidence Retrieval Performance (Table 4).
     Columns: Doc Hit@5, Section Hit@5, Evidence R@5, Evidence R@10,
              Table Hit@5, Cross-doc Recall.
     """
@@ -558,3 +558,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

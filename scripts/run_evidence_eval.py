@@ -457,7 +457,7 @@ def save_evidence_results(metrics: Dict, output_dir: str, method: str,
     csv_path = os.path.join(output_dir, "evidence_results.csv")
     fieldnames = [
         "timestamp", "method", "dataset", "split", "top_k", "n_samples",
-        # E.3 main table columns (Table 4 in new.md)
+        # E3 main table columns (Table 4)
         "doc_hit_5", "doc_hit_10",
         "section_hit_5", "section_hit_10",
         "recall_5", "recall_10",
@@ -494,7 +494,7 @@ def print_evidence_metrics(metrics: Dict, method: str):
     print(f"\n{'='*55}")
     print(f"Evidence Retrieval Results: {method}")
     print(f"{'='*55}")
-    # E.3 main table columns (matches new.md Table 4)
+    # E3 main table columns (matches Table 4)
     main_keys = [
         "doc_hit_5", "section_hit_5", "recall_5", "recall_10",
         "table_hit_5", "cross_doc_recall",
