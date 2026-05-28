@@ -51,32 +51,32 @@ os.makedirs(FIGURE_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 COLORS = {
     "HC-RAG":        "#E63946",
-    "GraphRAG":      "#457B9D",
+    "Graph-RAG (entity)": "#457B9D",
     "RAPTOR":        "#2A9D8F",
     "Self-RAG":      "#E9C46A",
     "Vanilla RAG":   "#F4A261",
     "BM25+DS-V4":    "#A8DADC",
-    "DPR+DS-V4":     "#B5C4B1",
-    "Contriever+DS-V4": "#8ECAE6",
+    "Dense-FinBERT (flat)": "#B5C4B1",
+    "Dense-FinBERT (large-chunk)": "#8ECAE6",
     "TAT-LLM":       "#CDB4DB",
-    "TAPEX-RAG":     "#FFAFCC",
+    "TAPAS-RAG":     "#FFAFCC",
     "calculation":   "#E63946",
     "trend":         "#457B9D",
     "fact":          "#2A9D8F",
     "comparison":    "#F4A261",
 }
 
-# Mapping from baseline script name todisplay name
+# Mapping from baseline script name to display name
 BASELINE_DISPLAY = {
     "bm25":        "BM25+DS-V4",
-    "dpr":         "DPR+DS-V4",
-    "contriever":  "Contriever+DS-V4",
+    "dpr":         "Dense-FinBERT (flat)",
+    "contriever":  "Dense-FinBERT (large-chunk)",
     "vanilla_rag": "Vanilla RAG",
     "self_rag":    "Self-RAG",
-    "graphrag":    "GraphRAG",
+    "graphrag":    "Graph-RAG (entity)",
     "raptor":      "RAPTOR",
     "tat_llm":     "TAT-LLM",
-    "tapex_rag":   "TAPEX-RAG",
+    "tapex_rag":   "TAPAS-RAG",
     "hcrag":       "HC-RAG",
 }
 
@@ -122,7 +122,7 @@ def plot_scalability(data: Dict, save_path: str):
         "doc_counts": [10, 20, 40, 60, 80, 100],
         "HC-RAG":     [1.6, 2.1, 2.8, 3.5, 4.1, 4.8],
         "Vanilla RAG":[1.4, 2.2, 3.8, 5.4, 6.9, 8.2],
-        "GraphRAG":   [2.1, 3.0, 4.5, 6.0, 7.5, 9.0],
+        "Graph-RAG (entity)": [2.1, 3.0, 4.5, 6.0, 7.5, 9.0],
     }
     """
     fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -218,7 +218,7 @@ def plot_robustness(data: Dict, save_path: str):
         "HC-RAG":     [64.2, 61.5, 59.1, 57.0, 54.8],
         "Vanilla RAG":[39.8, 35.2, 30.1, 27.4, 24.7],
         "Self-RAG":   [44.6, 40.8, 37.2, 34.5, 32.0],
-        "GraphRAG":   [49.3, 45.1, 41.8, 39.2, 36.8],
+        "Graph-RAG (entity)": [49.3, 45.1, 41.8, 39.2, 36.8],
     }
     """
     fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -253,14 +253,14 @@ def plot_table2(results_by_dataset: Dict[str, Dict], save_path: str,
     # Paper Table 2 numbers as fallback (F1 column)
     paper_numbers = {
         "BM25+DS-V4":        [51.2, 58.3, 48.7, 28.4, 28.6],
-        "DPR+DS-V4":         [56.8, 63.7, 54.2, 34.7, 34.7],
-        "Contriever+DS-V4":  [58.3, 65.2, 55.9, 37.2, 37.2],
+        "Dense-FinBERT (flat)": [56.8, 63.7, 54.2, 34.7, 34.7],
+        "Dense-FinBERT (large-chunk)": [58.3, 65.2, 55.9, 37.2, 37.2],
         "Vanilla RAG":       [59.7, 66.8, 57.3, 39.8, 39.8],
         "Self-RAG":          [62.4, 69.3, 60.1, 44.6, 44.6],
-        "GraphRAG":          [64.1, 71.5, 61.8, 49.3, 49.3],
+        "Graph-RAG (entity)": [64.1, 71.5, 61.8, 49.3, 49.3],
         "RAPTOR":            [65.3, 72.8, 63.2, 52.1, 52.1],
         "TAT-LLM":           [68.7, 75.2, 66.4, 47.8, 47.8],
-        "TAPEX-RAG":         [69.4, 76.8, 67.2, 54.1, 54.1],
+        "TAPAS-RAG":         [69.4, 76.8, 67.2, 54.1, 54.1],
         "HC-RAG":            [70.2, 79.4, 68.8, 64.2, 64.2],
     }
 
@@ -280,7 +280,7 @@ def plot_table2(results_by_dataset: Dict[str, Dict], save_path: str,
 
     # Plot only key models to keep chart readable
     plot_models = ["BM25+DS-V4", "Vanilla RAG", "Self-RAG",
-                   "GraphRAG", "RAPTOR", "TAPEX-RAG", "HC-RAG"]
+                   "Graph-RAG (entity)", "RAPTOR", "TAPAS-RAG", "HC-RAG"]
     x = np.arange(len(datasets))
     width = 0.11
     fig, ax = plt.subplots(figsize=(14, 5))
@@ -313,7 +313,7 @@ def plot_ablation(save_path: str):
         "HC-RAG (Full)",
         "w/o Three-Level Index",
         "w/o Cross-Modal Align",
-        "w/o TAPEX",
+        "w/o TAPAS",
         "w/o Query-Aware Fusion",
         "w/o L1 Cross-Doc Edges",
         "w/o L2 Section Nodes",
@@ -352,7 +352,7 @@ DEMO_SCALABILITY = {
     "doc_counts":  [10, 20, 40, 60, 80, 100],
     "HC-RAG":      [1.6, 2.1, 2.8, 3.5, 4.1, 4.8],
     "Vanilla RAG": [1.4, 2.2, 3.8, 5.4, 6.9, 8.2],
-    "GraphRAG":    [2.1, 3.0, 4.5, 6.0, 7.5, 9.0],
+    "Graph-RAG (entity)": [2.1, 3.0, 4.5, 6.0, 7.5, 9.0],
 }
 
 DEMO_ROBUSTNESS = {
@@ -360,12 +360,12 @@ DEMO_ROBUSTNESS = {
     "HC-RAG":      [64.2, 61.5, 59.1, 57.0, 54.8],
     "Vanilla RAG": [39.8, 35.2, 30.1, 27.4, 24.7],
     "Self-RAG":    [44.6, 40.8, 37.2, 34.5, 32.0],
-    "GraphRAG":    [49.3, 45.1, 41.8, 39.2, 36.8],
+    "Graph-RAG (entity)": [49.3, 45.1, 41.8, 39.2, 36.8],
 }
 
 
 def _demo_fusion_predictions() -> List[Dict]:
-    """Synthetic fusion weight data matching paper Figure 6 description."""
+    """Fallback demo data used only when --demo is requested explicitly."""
     rng = np.random.default_rng(42)
     preds = []
     # calculation: median alpha >=0.32 (table-heavy)
@@ -385,7 +385,7 @@ def _demo_fusion_predictions() -> List[Dict]:
 # ---------------------------------------------------------------------------
 
 DEMO_EVIDENCE = {
-    "methods":          ["BM25", "DPR+DS-V4", "Hybrid", "RAPTOR", "GraphRAG", "HC-RAG"],
+    "methods":          ["BM25", "Dense-FinBERT (flat)", "Hybrid", "RAPTOR", "Graph-RAG (entity)", "HC-RAG"],
     "doc_hit_5":        [52.3,   61.4,         65.8,     63.2,     66.1,        78.4],
     "section_hit_5":    [38.7,   47.2,         51.3,     49.8,     52.4,        69.3],
     "recall_5":         [41.2,   50.8,         55.1,     53.4,     56.7,        72.1],
@@ -502,13 +502,14 @@ def main():
     else:
         preds_for_fig6 = load_predictions(args.results_dir, "multidoc2025")
         if not preds_for_fig6:
-            print("  No multidoc2025 predictions found; using demo data.")
-            preds_for_fig6 = _demo_fusion_predictions()
-    try:
-        plot_fusion_weights(preds_for_fig6,
-                            os.path.join(FIGURE_DIR, "figure6_fusion_weights.png"))
-    except ImportError:
-        print("  scipy not installed; skipping KDE subplot. pip install scipy")
+            print("  No multidoc2025 predictions found; skipping Figure 6.")
+            preds_for_fig6 = []
+    if preds_for_fig6:
+        try:
+            plot_fusion_weights(preds_for_fig6,
+                                os.path.join(FIGURE_DIR, "figure6_fusion_weights.png"))
+        except ImportError:
+            print("  scipy not installed; skipping KDE subplot. pip install scipy")
 
     # ---- Figure 7: Robustness ----
     print("Figure 7: Robustness ...")

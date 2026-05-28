@@ -31,6 +31,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.prepare_datasets import load_dataset_split
 from scripts.run_inference import HCRAGInference
 from src.evaluation import BenchmarkEvaluator
+from src.run_metadata import build_run_metadata, save_run_metadata
 
 
 def _extract_question(raw: str) -> str:
@@ -186,6 +187,9 @@ def evaluate_dataset(
             "execution_required": exec_required,
             "fusion_weight":      result.get("fusion_weight"),
             "confidence":         result.get("confidence"),
+            "retrieval_top_k":    result.get("retrieval_top_k"),
+            "final_evidence_budget": result.get("final_evidence_budget"),
+            "retrieval_mode":     result.get("retrieval_mode"),
             "latency_s":          round(lat, 3),
         })
 
@@ -209,6 +213,10 @@ def save_results(
     output_dir: str,
     dataset: str,
     split: str,
+    config: Dict[str, Any],
+    config_path: str,
+    max_samples: int,
+    workers: int,
 ):
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -222,6 +230,46 @@ def save_results(
     metrics_path = os.path.join(output_dir, f"{dataset}_{split}_metrics_{timestamp}.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+    retrieval_top_k_values = sorted({
+        int(p["retrieval_top_k"]) for p in predictions_log
+        if p.get("retrieval_top_k") is not None
+    })
+    final_budget_values = sorted({
+        int(p["final_evidence_budget"]) for p in predictions_log
+        if p.get("final_evidence_budget") is not None
+    })
+    retrieval_modes = sorted({
+        str(p["retrieval_mode"]) for p in predictions_log
+        if p.get("retrieval_mode")
+    })
+    metadata = build_run_metadata(
+        config=config,
+        config_path=config_path,
+        script_name="scripts/run_evaluation.py",
+        run_type="e2_answer_eval",
+        dataset=dataset,
+        split=split,
+        method="hc_rag",
+        output_dir=output_dir,
+        retrieval_top_k=retrieval_top_k_values,
+        final_evidence_budget=final_budget_values,
+        max_samples=max_samples,
+        workers=workers,
+        extra={
+            "n_samples_evaluated": len(predictions_log),
+            "retrieval_modes_observed": retrieval_modes,
+            "context_budget_words": 3000,
+            "fairness_controls": {
+                "shared_generator": True,
+                "shared_prompt_template": True,
+                "shared_decoding": True,
+                "shared_max_context_length": True,
+                "shared_evidence_serialization": True,
+            },
+        },
+    )
+    metadata_path = save_run_metadata(metadata, output_dir, f"{dataset}_{split}", timestamp)
 
     # Append one row to a master CSV for easy comparison across runs.
     # Use a fixed superset of columns so rows from different datasets align.
@@ -256,6 +304,7 @@ def save_results(
 
     print(f"\n  Predictions -> {pred_path}")
     print(f"  Metrics     -> {metrics_path}")
+    print(f"  Run Meta    -> {metadata_path}")
     print(f"  Master CSV  -> {csv_path}")
 
 
@@ -309,7 +358,10 @@ def main():
             workers=args.workers,
         )
         print_metrics(metrics, dataset)
-        save_results(predictions_log, metrics, args.output_dir, dataset, args.split)
+        save_results(
+            predictions_log, metrics, args.output_dir, dataset, args.split,
+            hcrag.config, args.config, args.max_samples, args.workers,
+        )
 
     print("\nEvaluation complete.")
 

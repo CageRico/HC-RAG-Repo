@@ -266,7 +266,7 @@ We report four primary metrics:
 |--------|-------------|
 | **EM** | Exact Match after answer normalization (lowercase, strip punctuation) |
 | **F1** | Token-level F1 score |
-| **Exec-Acc** | Numerical execution accuracy (tolerance 1×10⁻³) |
+| **Exec-Acc** | Numerical execution accuracy (relative tolerance 1×10⁻³) |
 | **Hall-Rate** | Hallucination rate — fraction of answers containing unverifiable claims |
 
 Slice metrics are reported for each intent class (`calculation_f1`, `trend_f1`, `fact_f1`, `comparison_f1`), each subset (`subset_S1_f1` … `subset_S5_f1`), and each difficulty level (`difficulty_L1_f1` … `difficulty_L3_f1`).

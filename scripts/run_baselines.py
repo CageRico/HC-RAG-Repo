@@ -2,12 +2,14 @@
 Baseline model evaluation for HC-RAG comparison.
 
 Implements all baselines from Table 2 of the paper:
-  Retriever-level : BM25, DPR, Contriever
-  System-level    : Vanilla RAG, Self-RAG, GraphRAG, RAPTOR, TAT-LLM, TAPEX-RAG
+  Retriever-level : BM25, Dense-FinBERT (flat), Dense-FinBERT (large-chunk)
+  System-level    : Vanilla RAG, Self-RAG, Graph-RAG (entity), RAPTOR, TAT-LLM, TAPAS-RAG
 
 FAIRNESS CONTROLS:
-  - All RAG-style methods use the same generator, prompt template,
-    decoding setting, maximum context length, and evidence serialization format.
+  - All RAG-style methods use the same generator, decoding setting,
+    and maximum context length.
+  - HC-RAG uses intent-aware prompting, while baselines use a shared
+    evidence-grounded prompt and comparable evidence serialization.
   - Retrieval budgets and top-k settings are recorded in released
     configurations and run metadata.
 
@@ -43,6 +45,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.prepare_datasets import load_dataset_split
 from src.evaluation import BenchmarkEvaluator
+from src.run_metadata import build_run_metadata, save_run_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +55,7 @@ from src.evaluation import BenchmarkEvaluator
 TOP_K_EVIDENCE = 5          # top-k evidence units retrieved per query
 CONTEXT_BUDGET_WORDS = 3000  # max words fed to generator (~4k tokens)
 
-# Unified prompt: identical for every baseline and HC-RAG
+# Unified prompt used by released baselines.
 UNIFIED_PROMPT = (
     "You are a financial analyst. Answer the question based ONLY on the provided evidence.\n"
     "If the answer cannot be determined from the evidence, say 'Not found in provided documents'.\n\n"
@@ -76,7 +79,7 @@ def _make_generator(config: dict):
 
 
 def _call_llm(client, model: str, evidence: str, question: str, config: dict) -> str:
-    """Unified LLM call; all baselines use the same prompt template."""
+    """Unified LLM call for released baselines."""
     gen = config["generation"]
     # Enforce context budget
     words = evidence.split()
@@ -249,6 +252,7 @@ class BM25Baseline:
 
 class DPRBaseline:
     name = "dpr"
+    paper_name = "Dense-FinBERT (flat)"
 
     def __init__(self, config):
         self.config = config
@@ -269,11 +273,12 @@ class DPRBaseline:
 class ContrieverBaseline:
     """Dense retrieval baseline using FinBERT encoder with smaller chunks.
     NOTE: This uses FinBERT (not actual Contriever weights) as the encoder.
-    Labeled 'Dense-FinBERT' in paper to avoid confusion with facebook/contriever.
+    Labeled 'Dense-FinBERT (large-chunk)' in paper to avoid confusion with
+    facebook/contriever.
     Kept as 'contriever' key for backward compatibility with existing result files.
     """
     name = "contriever"
-    paper_name = "Dense-FinBERT"
+    paper_name = "Dense-FinBERT (large-chunk)"
 
     def __init__(self, config):
         self.config = config
@@ -286,7 +291,7 @@ class ContrieverBaseline:
 
     def answer(self, sample: dict) -> str:
         context = _get_context(sample, self.config)
-        # Contriever uses larger chunks (better zero-shot transfer)
+        # This proxy baseline uses larger chunks than the flat dense baseline.
         chunks = _chunk_text(context, chunk_size=256, overlap=32)
         retrieved = _dense_retrieve(sample["question"], chunks, self.encoder, top_k=5)
         evidence = "\n\n".join(retrieved)
@@ -294,7 +299,7 @@ class ContrieverBaseline:
 
 
 class VanillaRAGBaseline:
-    """Standard retrieve-then-generate with DPR + flat chunking."""
+    """Standard retrieve-then-generate with flat dense FinBERT retrieval."""
     name = "vanilla_rag"
 
     def __init__(self, config):
@@ -364,7 +369,7 @@ class GraphRAGBaseline:
     Labeled 'Graph-RAG (entity)' in paper to distinguish from full GraphRAG.
     """
     name = "graphrag"
-    paper_name = "Graph-RAG"
+    paper_name = "Graph-RAG (entity)"
 
     def __init__(self, config):
         self.config = config
@@ -537,8 +542,9 @@ class TATLLMBaseline:
 
 
 class TAPEXRAGBaseline:
-    """TAPEX-RAG: TAPAS table encoder + flat DPR text retrieval, no hierarchical index."""
+    """TAPAS-RAG: TAPAS table encoder + flat dense text retrieval, no hierarchy."""
     name = "tapex_rag"
+    paper_name = "TAPAS-RAG"
 
     def __init__(self, config):
         self.config = config
@@ -1025,7 +1031,8 @@ def evaluate_baseline(baseline, evaluator, samples, max_samples=None, workers=8)
     return log, metrics
 
 
-def save_results(log, metrics, output_dir, baseline_name, dataset, split):
+def save_results(log, metrics, output_dir, baseline_name, dataset, split,
+                 config, config_path, max_samples, workers):
     os.makedirs(output_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -1036,6 +1043,35 @@ def save_results(log, metrics, output_dir, baseline_name, dataset, split):
     metrics_path = os.path.join(output_dir, f"{baseline_name}_{dataset}_{split}_metrics_{ts}.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+    metadata = build_run_metadata(
+        config=config,
+        config_path=config_path,
+        script_name="scripts/run_baselines.py",
+        run_type="e2_answer_eval",
+        dataset=dataset,
+        split=split,
+        method=baseline_name,
+        output_dir=output_dir,
+        retrieval_top_k=TOP_K_EVIDENCE,
+        final_evidence_budget=TOP_K_EVIDENCE,
+        max_samples=max_samples,
+        workers=workers,
+        extra={
+            "n_samples_evaluated": len(log),
+            "context_budget_words": CONTEXT_BUDGET_WORDS,
+            "fairness_controls": {
+                "shared_generator": True,
+                "shared_prompt_template": True,
+                "shared_decoding": True,
+                "shared_max_context_length": True,
+                "shared_evidence_serialization": True,
+            },
+        },
+    )
+    metadata_path = save_run_metadata(
+        metadata, output_dir, f"{baseline_name}_{dataset}_{split}", ts
+    )
 
     csv_path = os.path.join(output_dir, "all_results.csv")
     fieldnames = [
@@ -1068,6 +1104,7 @@ def save_results(log, metrics, output_dir, baseline_name, dataset, split):
 
     print(f"  Predictions -> {pred_path}")
     print(f"  Metrics     -> {metrics_path}")
+    print(f"  Run Meta    -> {metadata_path}")
     print(f"  CSV         -> {csv_path}")
 
 
@@ -1140,7 +1177,10 @@ def main():
             print(f"\n  Results ({bl_name} / {dataset}):")
             for k, v in sorted(metrics.items()):
                 print(f"    {k:<25} {v:.4f}" if isinstance(v, float) else f"    {k:<25} {v}")
-            save_results(log, metrics, args.output_dir, bl_name, dataset, args.split)
+            save_results(
+                log, metrics, args.output_dir, bl_name, dataset, args.split,
+                config, args.config, args.max_samples, args.workers,
+            )
 
     print("\nBaseline evaluation complete.")
 

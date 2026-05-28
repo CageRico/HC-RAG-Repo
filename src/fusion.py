@@ -3,11 +3,12 @@ Query-Aware Adaptive Fusion Network
 Four-class intent taxonomy: calculation, trend analysis, fact finding, comparison
 """
 
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any, Union
 from enum import Enum
 
 
@@ -16,6 +17,52 @@ class IntentType(Enum):
     TREND_ANALYSIS = 1   # trend analysis questions
     FACT_FINDING = 2     # fact lookup questions
     COMPARISON = 3       # cross-entity comparison questions
+
+
+def compute_weak_lambda_target(intent: str,
+                               is_hybrid_modal: bool = False,
+                               subset: str = "") -> float:
+    """
+    Build a weak supervision target for the routing weight lambda.
+
+    The paper specifies the qualitative routing behavior but not a separate
+    gate-training loss. We supervise the gate from the released intent and
+    structural labels so that calculation questions stay table-heavy, trend
+    questions stay text-heavy, and hybrid cases move toward a mixed setting.
+    """
+    base = {
+        "calculation": 0.20,
+        "trend": 0.80,
+        "fact": 0.70,
+        "comparison": 0.50,
+    }.get(str(intent).lower(), 0.50)
+
+    subset = str(subset).upper()
+    if subset == "S2":
+        base = 0.10
+    elif subset == "S1" and str(intent).lower() == "fact":
+        base = 0.85
+
+    if is_hybrid_modal:
+        base = 0.5 * base + 0.25
+
+    return float(min(0.95, max(0.05, base)))
+
+
+def load_fusion_checkpoint(fusion_network: nn.Module,
+                           checkpoint_path: str,
+                           map_location: Union[str, torch.device] = "cpu") -> bool:
+    """Load a trained fusion gate checkpoint into the runtime network."""
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        return False
+
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    cleaned = {}
+    for key, value in state_dict.items():
+        cleaned[key[7:]] = value if key.startswith("module.") else value
+    fusion_network.load_state_dict(cleaned)
+    return True
 
 
 class IntentClassifier(nn.Module):

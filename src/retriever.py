@@ -432,9 +432,7 @@ class HierarchicalRetriever:
             gate_input = torch.cat([query_tensor, intent_tensor], dim=-1)
             fusion_weight = self.fusion_network.gate(gate_input).item()
 
-        # Weight and merge results with guaranteed minimum text slots.
-        # Even when fusion_weight is near 0 (table-heavy), we always include
-        # at least half text chunks so the LLM has narrative context.
+        # Weight and merge modality-specific candidates using the learned routing weight.
         text_weight = fusion_weight
         table_weight = 1 - fusion_weight
 
@@ -446,32 +444,7 @@ class HierarchicalRetriever:
 
         merged.sort(key=lambda x: x[1], reverse=True)
 
-        # Guarantee at least half of l3_k slots are text chunks
-        min_text = self.l3_k // 2
-        result = []
-        text_added = 0
-        table_added = 0
-        for item in merged:
-            if len(result) >= self.l3_k:
-                break
-            if item[2] == "text":
-                result.append(item)
-                text_added += 1
-            elif item[2] == "table":
-                result.append(item)
-                table_added += 1
-
-        # If not enough text chunks, fill from top_text
-        if text_added < min_text:
-            existing_ids = {id(item[0]) for item in result}
-            for chunk, score in top_text:
-                if text_added >= min_text:
-                    break
-                if id(chunk) not in existing_ids:
-                    result.append((chunk, score * text_weight, "text"))
-                    text_added += 1
-
-        return [item[0] for item in result[:self.l3_k]], fusion_weight
+        return [item[0] for item in merged[:self.l3_k]], fusion_weight
 
 
 class ContextBuilder:

@@ -13,8 +13,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.hierarchical_index import (
     HierarchicalIndex, DocumentNode, SectionNode, TextChunkNode, TableCellNode, NodeType
 )
-from src.encoders import TextEncoder, TableEncoder
-from src.fusion import IntentClassifier, AdaptiveFusionNetwork, IntentType
+from src.encoders import TextEncoder, TableEncoder, extract_alignment_projection_state
+from src.fusion import (
+    IntentClassifier,
+    AdaptiveFusionNetwork,
+    IntentType,
+    compute_weak_lambda_target,
+)
+from src.evaluation import QAEvaluator
 from src.utils import chunk_text, extract_tables_from_html, normalize_number
 
 
@@ -114,6 +120,48 @@ class TestFusionNetwork(unittest.TestCase):
         self.assertEqual(fused.shape, (1, 768))
         self.assertGreaterEqual(lam, 0)
         self.assertLessEqual(lam, 1)
+
+
+class TestPaperAlignmentHelpers(unittest.TestCase):
+    def test_extract_alignment_projection_state(self):
+        checkpoint = {
+            "model_state_dict": {
+                "module.text_proj.0.weight": torch.randn(4, 4),
+                "module.text_proj.0.bias": torch.randn(4),
+                "module.text_proj.1.weight": torch.randn(4),
+                "module.text_proj.1.bias": torch.randn(4),
+                "module.table_proj.0.weight": torch.randn(4, 4),
+                "module.table_proj.0.bias": torch.randn(4),
+                "module.table_proj.1.weight": torch.randn(4),
+                "module.table_proj.1.bias": torch.randn(4),
+            }
+        }
+        text_state, table_state = extract_alignment_projection_state(checkpoint)
+        self.assertIn("0.weight", text_state)
+        self.assertIn("1.bias", text_state)
+        self.assertIn("0.weight", table_state)
+        self.assertIn("1.bias", table_state)
+
+    def test_compute_weak_lambda_target(self):
+        calc = compute_weak_lambda_target("calculation", is_hybrid_modal=False, subset="S2")
+        trend = compute_weak_lambda_target("trend", is_hybrid_modal=False, subset="S3")
+        hybrid_calc = compute_weak_lambda_target("calculation", is_hybrid_modal=True, subset="S5")
+        fact = compute_weak_lambda_target("fact", is_hybrid_modal=False, subset="S1")
+
+        self.assertLess(calc, 0.2)
+        self.assertGreater(trend, 0.7)
+        self.assertGreater(hybrid_calc, calc)
+        self.assertGreater(fact, hybrid_calc)
+
+
+class TestEvaluationTolerance(unittest.TestCase):
+    def test_exact_match_uses_paper_tolerance(self):
+        self.assertTrue(QAEvaluator.exact_match("100.05", "100"))
+        self.assertFalse(QAEvaluator.exact_match("100.2", "100"))
+
+    def test_execution_accuracy_uses_paper_tolerance(self):
+        self.assertTrue(QAEvaluator.execution_accuracy("Revenue was 200.1", "200"))
+        self.assertFalse(QAEvaluator.execution_accuracy("Revenue was 200.3", "200"))
 
 
 if __name__ == "__main__":

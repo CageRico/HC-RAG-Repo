@@ -1,6 +1,6 @@
 """
-Response Generation Layer
-Uses DeepSeek V4-flash or a configured local model with intent-specific prompts
+Response generation layer.
+Uses DeepSeek V4-flash or a configured local model with intent-aware prompts.
 """
 
 import json
@@ -25,7 +25,7 @@ class GenerationResult:
 
 class ResponseGenerator:
     """
-    LLM-based response generator with source tracing
+    LLM-based response generator with source tracing.
     """
     
     def __init__(self, config: Dict[str, Any]):
@@ -79,22 +79,14 @@ class ResponseGenerator:
         Returns:
             GenerationResult with answer and sources
         """
-        # Build context from evidence, enforce 3000-word budget (same as baselines)
+        # Build context from evidence and enforce the released context budget.
         context = self.context_builder.build_context(evidence_nodes)
         words = context.split()
         if len(words) > 3000:
             context = " ".join(words[:3000])
 
-        # UNIFIED_PROMPT for fair E2 comparison (same prompt as all baselines)
-        UNIFIED_PROMPT = (
-            "You are a financial analyst. Answer the question based on the provided evidence.\n"
-            "Use the tables and text to extract or calculate the answer. "
-            "Be concise and give the final answer directly.\n\n"
-            "Evidence:\n{evidence}\n\n"
-            "Question: {question}\n\n"
-            "Answer:"
-        )
-        prompt = UNIFIED_PROMPT.format(evidence=context, question=query)
+        # HC-RAG uses the intent-aware prompt family defined in the paper.
+        prompt = self.prompt_builder.build_prompt(query=query, evidence=context, intent=intent)
         
         # Generate response
         if self.use_openai:

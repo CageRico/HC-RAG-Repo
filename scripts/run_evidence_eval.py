@@ -8,7 +8,7 @@ Metrics computed per method:
   - Doc Hit@5 / @10       : gold document found in top-k retrieved chunks
   - Section Hit@5 / @10   : gold section found in top-k retrieved chunks
   - Evidence Recall@5 / @10: fraction of gold evidence units covered in top-k
-  - Table Hit@5           : gold evidence is table-type and a table chunk is retrieved
+  - Table Hit@5           : a comparable table evidence trace is retrieved
   - Cross-doc Recall      : for multi-doc questions, fraction of gold docs covered
 
 Gold evidence is derived from the dataset's existing fields:
@@ -44,6 +44,7 @@ from scripts.run_baselines import (
     _chunk_text, _bm25_retrieve, _dense_retrieve, _get_text_encoder,
     _get_index_chunks_with_meta,
 )
+from src.run_metadata import build_run_metadata, save_run_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +135,9 @@ def evidence_recall_at_k(retrieved: List[Dict], gold_section: str,
 
 def table_hit_at_k(retrieved: List[Dict], is_hybrid: bool, k: int) -> float:
     """
-    For hybrid-modal questions, 1 if any top-k chunk contains table-like content.
-    Checks chunk type field OR presence of structured numeric/pipe content.
+    For hybrid-modal questions, 1 if any top-k chunk exposes a comparable
+    table evidence trace. The released schema accepts explicit table tags,
+    table_id metadata, or reconstructed table-like spans.
     """
     import re as _re
     if not is_hybrid:
@@ -444,7 +446,9 @@ def _aggregate(results: List[Dict]) -> Dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def save_evidence_results(metrics: Dict, output_dir: str, method: str,
-                          dataset: str, split: str, top_k: int):
+                          dataset: str, split: str, top_k: int,
+                          config: Dict[str, Any], config_path: str,
+                          max_samples: int, workers: int):
     os.makedirs(output_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -452,6 +456,27 @@ def save_evidence_results(metrics: Dict, output_dir: str, method: str,
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({"method": method, "dataset": dataset, "split": split,
                    "top_k": top_k, "metrics": metrics}, f, ensure_ascii=False, indent=2)
+
+    metadata = build_run_metadata(
+        config=config,
+        config_path=config_path,
+        script_name="scripts/run_evidence_eval.py",
+        run_type="e3_evidence_eval",
+        dataset=dataset,
+        split=split,
+        method=method,
+        output_dir=output_dir,
+        retrieval_top_k=top_k,
+        final_evidence_budget=top_k,
+        max_samples=max_samples,
+        workers=workers,
+        extra={
+            "n_samples_evaluated": metrics.get("n_samples"),
+            "reported_cutoffs": [5, 10],
+            "evidence_localization_mode": "fixed_reported_cutoffs",
+        },
+    )
+    metadata_path = save_run_metadata(metadata, output_dir, f"evidence_{method}_{dataset}_{split}", ts)
 
     # Master CSV for easy table construction
     csv_path = os.path.join(output_dir, "evidence_results.csv")
@@ -487,6 +512,7 @@ def save_evidence_results(metrics: Dict, output_dir: str, method: str,
         writer.writerow(row)
 
     print(f"  JSON    -> {json_path}")
+    print(f"  Run Meta-> {metadata_path}")
     print(f"  CSV     -> {csv_path}")
 
 
@@ -573,8 +599,10 @@ def main():
             workers=args.workers,
         )
         print_evidence_metrics(metrics, bl_name)
-        save_evidence_results(metrics, args.output_dir, bl_name,
-                              args.dataset, args.split, args.top_k)
+        save_evidence_results(
+            metrics, args.output_dir, bl_name, args.dataset, args.split, args.top_k,
+            config, args.config, args.max_samples, args.workers,
+        )
 
     if args.hcrag:
         print(f"\n{'='*55}")
@@ -596,8 +624,10 @@ def main():
                 checkpoint_path=ckpt_path,
             )
             print_evidence_metrics(metrics, "hcrag")
-            save_evidence_results(metrics, args.output_dir, "hcrag",
-                                  args.dataset, args.split, args.top_k)
+            save_evidence_results(
+                metrics, args.output_dir, "hcrag", args.dataset, args.split, args.top_k,
+                config, args.config, args.max_samples, args.workers,
+            )
             # Delete checkpoint after successful completion.
             if os.path.exists(ckpt_path):
                 os.remove(ckpt_path)

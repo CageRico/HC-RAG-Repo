@@ -24,7 +24,7 @@ data/raw/            SEC 10-K HTML filings
 data/benchmarks/     Converted public benchmark files
 data/multidoc2025/   Full Multi-Doc-2025 JSON data
 indexes/             Built hierarchical indexes
-checkpoints/         Trained alignment and intent checkpoints
+checkpoints/         Trained alignment, intent, and fusion checkpoints
 cache/               HuggingFace or dataset cache
 outputs/             Generated predictions, metrics, and logs
 ```
@@ -138,15 +138,49 @@ python scripts/build_multidoc2025.py
 
 Depending on your data source and API access, you may need to adapt paths or credentials before running these scripts. If you use the HuggingFace release directly, make sure its split files and original filings are copied or symlinked to the paths expected by `config.yaml` and the scripts.
 
-## Build Index
+## Paper-Aligned Training and Inference
 
-After data is available:
+After data is available, reproduce the paper pipeline in this order:
+
+1. Build an initial hierarchical index from the local filings:
 
 ```bash
 python scripts/build_index.py --config config.yaml
 ```
 
-This creates the hierarchical index under:
+2. Train the offline text-table alignment model from section-local pairs extracted from the index:
+
+```bash
+python scripts/train_align.py
+```
+
+3. Rebuild the hierarchical index so cached retrieval embeddings use the trained alignment projection:
+
+```bash
+python scripts/build_index.py --config config.yaml
+```
+
+4. Train the four-class intent classifier on Multi-Doc-2025:
+
+```bash
+python scripts/train_intent.py
+```
+
+5. Train the query-aware fusion gate:
+
+```bash
+python scripts/train_fusion.py
+```
+
+This paper-aligned workflow produces the following checkpoints under `checkpoints/`:
+
+```text
+align_checkpoint_best.pt
+intent_best.pt
+fusion_best.pt
+```
+
+The hierarchical index is written under:
 
 ```text
 indexes/hierarchical_index.pkl
@@ -156,7 +190,7 @@ The index is intentionally not committed because it depends on local filings, pa
 
 ## Run Inference
 
-For a simple pipeline run:
+After the paper-aligned checkpoints have been created:
 
 ```bash
 python scripts/run_inference.py --config config.yaml
@@ -181,10 +215,11 @@ python scripts/run_evidence_eval.py --all_methods --dataset multidoc2025 --split
 ```
 
 Generated predictions, metrics, logs, and figures are written under `outputs/`, which is excluded from version control by default.
+Each E2/E3/baseline run also writes a latest `run_metadata.json` plus a timestamped `*_run_metadata_*.json` file so retrieval budgets, evidence budgets, decoding settings, checkpoints, and evaluation cutoffs can be audited after the run.
 
 ## Reproducibility Notes
 
-All RAG-style methods use the same generator, prompt template, decoding setting, maximum context length, and evidence serialization format. Retrieval budgets and top-k settings are method-specific and should be recorded with each run.
+All RAG-style methods use the same generator, decoding setting, and maximum context length. HC-RAG uses an intent-aware evidence-grounded prompt family, while released baselines use a harmonized evidence-grounded prompt and serialization interface. Retrieval budgets and top-k settings are method-specific and should be recorded with each run.
 
 For paper-aligned HC-RAG defaults:
 
@@ -197,6 +232,8 @@ generation:
   temperature: 0.0
   top_p: 1.0
 ```
+
+The released HC-RAG code expects the aligned index and the three trained checkpoints above for paper-consistent runs. If the checkpoints are missing, the scripts will still run, but those runs should be treated as non-paper-aligned sanity checks rather than the full reported configuration.
 
 BM25 table-hit evidence metrics should be reported as `--` when comparable `table_id` values are not available. Use `0.00` only when comparable table IDs exist and no gold table is hit.
 

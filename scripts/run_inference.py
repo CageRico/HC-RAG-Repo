@@ -1,4 +1,4 @@
-"""
+﻿"""
 End-to-end inference for HC-RAG
 """
 
@@ -16,8 +16,8 @@ from transformers import AutoTokenizer, AutoModel
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.hierarchical_index import HierarchicalIndex, DocumentNode, SectionNode, TextChunkNode, TableCellNode
-from src.encoders import TextEncoder, TableEncoder, RetrievalEncoder
-from src.fusion import IntentClassifier, AdaptiveFusionNetwork, IntentType
+from src.encoders import TextEncoder, TableEncoder, RetrievalEncoder, load_alignment_checkpoint
+from src.fusion import AdaptiveFusionNetwork, IntentType, load_fusion_checkpoint
 from src.retriever import HierarchicalRetriever, ContextBuilder
 from src.generator import ResponseGenerator
 
@@ -135,8 +135,17 @@ class HCRAGInference:
             local_files_only=local_files_only,
         )
         self.table_encoder.to(self.device)
+
+        align_ckpt = os.path.join(
+            self.config["paths"]["checkpoint_dir"],
+            "align_checkpoint_best.pt",
+        )
+        if load_alignment_checkpoint(self.text_encoder, self.table_encoder, align_ckpt, map_location=self.device):
+            print(f"Loaded alignment checkpoint from {align_ckpt}")
+        else:
+            print("Warning: alignment checkpoint not found; using base encoder projections.")
         
-        # Intent classifier — FinBERT end-to-end fine-tuned
+        # Intent classifier -FinBERT end-to-end fine-tuned
         model_name = self.config["models"]["text_encoder"]
         _tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=local_files_only)
         _bert_clf = FinBERTIntentClassifier(
@@ -163,6 +172,14 @@ class HCRAGInference:
             hidden_dim=self.config["fusion"]["hidden_dim"],
             num_intents=self.config["fusion"]["intent_classes"]
         )
+        fusion_ckpt = os.path.join(
+            self.config["paths"]["checkpoint_dir"],
+            "fusion_best.pt",
+        )
+        if load_fusion_checkpoint(self.fusion_network, fusion_ckpt, map_location=self.device):
+            print(f"Loaded fusion checkpoint from {fusion_ckpt}")
+        else:
+            print("Warning: fusion checkpoint not found; using an untrained routing gate.")
         self.fusion_network.to(self.device)
         self.fusion_network.eval()
         
@@ -198,7 +215,7 @@ class HCRAGInference:
             return
         print(f"  Computing embeddings for {len(missing)} document nodes...")
 
-        # Build doc_prefix → doc mapping
+        # Build doc_prefix ->doc mapping
         # doc node_id format: e.g. "doc_AAPL_2022" or "AAPL_2022"
         doc_prefixes = {}
         for doc in missing:
@@ -296,13 +313,16 @@ class HCRAGInference:
             "intent":        result.intent.name if hasattr(result.intent, 'name') else str(result.intent),
             "confidence":    result.confidence,
             "num_evidence":  len(evidence_nodes),
+            "retrieval_top_k": self.config["index"]["l3_semantic_k"],
+            "final_evidence_budget": len(evidence_nodes),
+            "retrieval_mode": "hierarchical",
         }
 
     def answer_with_context(self, query: str, context: str) -> Dict[str, Any]:
         """
         Answer using inline context (for FinQA / TAT-QA / FinanceBench / DocFinQA).
         Performs dense retrieval over the context chunks, then applies cross-modal
-        fusion — same pipeline as the index-based path, just with a local chunk pool
+        fusion -same pipeline as the index-based path, just with a local chunk pool
         instead of the hierarchical index.
         """
         import numpy as np
@@ -368,16 +388,12 @@ class HCRAGInference:
         if len(words) > CONTEXT_BUDGET_WORDS:
             evidence = " ".join(words[:CONTEXT_BUDGET_WORDS])
 
-        # Use UNIFIED_PROMPT for fair E2 comparison (same prompt as all baselines)
-        UNIFIED_PROMPT = (
-            "You are a financial analyst. Answer the question based on the provided evidence.\n"
-            "Use the tables and text to extract or calculate the answer. "
-            "Be concise and give the final answer directly.\n\n"
-            "Evidence:\n{evidence}\n\n"
-            "Question: {question}\n\n"
-            "Answer:"
+        # Inline-context benchmarks use the same intent-aware generation family.
+        prompt = IntentAwarePromptBuilder().build_prompt(
+            query=query,
+            evidence=evidence,
+            intent=intent,
         )
-        prompt = UNIFIED_PROMPT.format(evidence=evidence, question=query)
         try:
             answer = self.generator._generate_openai(prompt)
         except Exception as e:
@@ -391,6 +407,9 @@ class HCRAGInference:
             "intent":        intent.name,
             "confidence":    float(probs.max()),
             "num_evidence":  len(top_chunks),
+            "retrieval_top_k": top_k,
+            "final_evidence_budget": len(top_chunks),
+            "retrieval_mode": "inline_context_dense",
         }
 
 
@@ -414,7 +433,7 @@ def main():
         try:
             result = hcrag.answer(query)
             print(f"Intent: {result['intent']}")
-            print(f"Fusion Weight (λ): {result['fusion_weight']:.3f}")
+            print(f"Fusion Weight (lambda): {result['fusion_weight']:.3f}")
             print(f"Answer: {result['answer'][:500]}...")
             print(f"Confidence: {result['confidence']:.2f}")
             print(f"Sources: {len(result['sources'])} evidence pieces")
@@ -425,3 +444,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

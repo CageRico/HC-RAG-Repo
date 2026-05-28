@@ -321,7 +321,7 @@ The official evaluation reports four primary answer-level metrics:
 |--------|-------------|
 | EM | Exact Match after answer normalization |
 | F1 | Token-level F1 score |
-| Exec-Acc | Numerical execution accuracy with tolerance `1e-3` |
+| Exec-Acc | Numerical execution accuracy with relative tolerance `1e-3` |
 | Hall-Rate | Fraction of answers containing unverifiable claims |
 
 ### Slice Metrics

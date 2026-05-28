@@ -9,8 +9,22 @@ import errors when only lightweight modules (utils) are needed.
 def _lazy_imports():
     from .hierarchical_index import (HierarchicalIndex, DocumentNode, SectionNode,
                                       TextChunkNode, TableCellNode, NodeType, EdgeType)
-    from .encoders import TextEncoder, TableEncoder, CrossModalAligner, RetrievalEncoder
-    from .fusion import IntentClassifier, AdaptiveFusionNetwork, IntentType, IntentAwarePromptBuilder
+    from .encoders import (
+        TextEncoder,
+        TableEncoder,
+        CrossModalAligner,
+        RetrievalEncoder,
+        extract_alignment_projection_state,
+        load_alignment_checkpoint,
+    )
+    from .fusion import (
+        IntentClassifier,
+        AdaptiveFusionNetwork,
+        IntentType,
+        IntentAwarePromptBuilder,
+        compute_weak_lambda_target,
+        load_fusion_checkpoint,
+    )
     from .retriever import HierarchicalRetriever, ContextBuilder
     from .generator import ResponseGenerator, GenerationResult
     from .evaluation import QAEvaluator, BenchmarkEvaluator
@@ -21,7 +35,9 @@ __all__ = [
     "HierarchicalIndex", "DocumentNode", "SectionNode",
     "TextChunkNode", "TableCellNode", "NodeType", "EdgeType",
     "TextEncoder", "TableEncoder", "CrossModalAligner", "RetrievalEncoder",
+    "extract_alignment_projection_state", "load_alignment_checkpoint",
     "IntentClassifier", "AdaptiveFusionNetwork", "IntentType", "IntentAwarePromptBuilder",
+    "compute_weak_lambda_target", "load_fusion_checkpoint",
     "HierarchicalRetriever", "ContextBuilder",
     "ResponseGenerator", "GenerationResult",
     "QAEvaluator", "BenchmarkEvaluator",

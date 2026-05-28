@@ -20,7 +20,12 @@ from src.hierarchical_index import (
 from src.utils import chunk_text, extract_tables_from_html, extract_sections_from_10k
 
 try:
-    from src.encoders import TextEncoder, TableEncoder, RetrievalEncoder
+    from src.encoders import (
+        TextEncoder,
+        TableEncoder,
+        RetrievalEncoder,
+        load_alignment_checkpoint,
+    )
     _ENCODERS_AVAILABLE = True
 except Exception as e:
     print(f"DEBUG encoders import error: {e}")
@@ -80,6 +85,14 @@ class IndexBuilder:
                 embedding_dim=self.config["alignment"]["embedding_dim"],
                 local_files_only=local_files_only,
             )
+            align_ckpt = os.path.join(
+                self.config["paths"]["checkpoint_dir"],
+                "align_checkpoint_best.pt",
+            )
+            if load_alignment_checkpoint(text_encoder, table_encoder, align_ckpt):
+                print(f"Loaded alignment checkpoint from {align_ckpt}")
+            else:
+                print("Alignment checkpoint not found; using base encoder projections.")
             self.encoder = RetrievalEncoder(text_encoder, table_encoder)
             print("Encoder initialized for embedding generation")
         except Exception as e:

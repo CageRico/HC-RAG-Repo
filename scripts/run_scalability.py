@@ -225,7 +225,7 @@ def run_scalability(config_path: str, output_dir: str, workers: int):
         "doc_counts":  DOC_COUNTS,
         "HC-RAG":      [],
         "Vanilla RAG": [],
-        "GraphRAG":    [],
+        "Graph-RAG (entity)": [],
     }
 
     for doc_count in DOC_COUNTS:
@@ -242,11 +242,11 @@ def run_scalability(config_path: str, output_dir: str, workers: int):
         print(f"  Vanilla RAG: {lat_vanilla:.2f}s")
 
         lat_graph = _measure_graphrag(client, model, encoder, samples, N_QUERIES, workers, config)
-        print(f"  GraphRAG:    {lat_graph:.2f}s")
+        print(f"  Graph-RAG (entity): {lat_graph:.2f}s")
 
         results["HC-RAG"].append(round(lat_hcrag, 3))
         results["Vanilla RAG"].append(round(lat_vanilla, 3))
-        results["GraphRAG"].append(round(lat_graph, 3))
+        results["Graph-RAG (entity)"].append(round(lat_graph, 3))
 
     out_path = os.path.join(output_dir, "scalability_results.json")
     with open(out_path, "w", encoding="utf-8") as f:

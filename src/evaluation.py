@@ -8,19 +8,22 @@ import numpy as np
 from typing import List, Dict, Any
 from collections import Counter, defaultdict
 
+NUMERIC_REL_TOLERANCE = 1e-3
+
 
 class QAEvaluator:
     """Question answering evaluation metrics."""
 
     @staticmethod
     def exact_match(prediction: str, ground_truth: str) -> bool:
-        # Numerical GT: check if prediction contains a matching number (1% tolerance)
+        # Numerical GT: check if prediction contains a matching number.
         gt_nums = QAEvaluator._extract_numbers(ground_truth)
         if len(gt_nums) == 1 and re.fullmatch(r'\s*-?\d+(?:[.,]\d+)?%?\s*', ground_truth.strip()):
             pred_nums = QAEvaluator._extract_numbers(prediction)
             if pred_nums:
                 gt = gt_nums[0]
-                return any(abs(p - gt) / (abs(gt) + 1e-9) < 0.01 for p in pred_nums)
+                return any(abs(p - gt) / (abs(gt) + 1e-9) < NUMERIC_REL_TOLERANCE
+                           for p in pred_nums)
             return False
         return (QAEvaluator._normalize(prediction) ==
                 QAEvaluator._normalize(ground_truth))
@@ -59,21 +62,23 @@ class QAEvaluator:
             return QAEvaluator.exact_match(prediction, ground_truth)
         if not gt_nums:
             return False
-        # GT has 1 number: check if any predicted number is within 1% tolerance
+        # GT has 1 number: check if any predicted number is within tolerance.
         if len(gt_nums) == 1:
             gt = gt_nums[0]
-            return any(abs(p - gt) / (abs(gt) + 1e-9) < 0.01 for p in pred_nums)
+            return any(abs(p - gt) / (abs(gt) + 1e-9) < NUMERIC_REL_TOLERANCE
+                       for p in pred_nums)
         # GT has multiple numbers: require same count and pairwise match
         if len(pred_nums) != len(gt_nums):
             return False
-        return all(abs(p - g) / (abs(g) + 1e-9) < 0.01 for p, g in zip(pred_nums, gt_nums))
+        return all(abs(p - g) / (abs(g) + 1e-9) < NUMERIC_REL_TOLERANCE
+                   for p, g in zip(pred_nums, gt_nums))
 
     @staticmethod
     def hallucination_rate(generated_answer: str, evidence: str) -> float:
         """
         Estimate hallucination rate for financial QA.
         Strategy: extract all numbers from the answer; a number is "supported"
-        if it (or a value within 1% tolerance) appears in the evidence.
+        if it (or a value within tolerance) appears in the evidence.
         Returns the fraction of answer-numbers NOT supported by evidence.
         Falls back to 0.0 if the answer contains no numbers (text-only answers
         are hard to verify without NLI and we don't penalise them here).
@@ -85,8 +90,9 @@ class QAEvaluator:
         evidence_nums = set(QAEvaluator._extract_numbers(evidence))
         unsupported = 0
         for a in answer_nums:
-            # supported if any evidence number is within 1% tolerance
-            if not any(abs(a - e) / (abs(e) + 1e-9) < 0.01 for e in evidence_nums):
+            # Supported if any evidence number is within tolerance.
+            if not any(abs(a - e) / (abs(e) + 1e-9) < NUMERIC_REL_TOLERANCE
+                       for e in evidence_nums):
                 unsupported += 1
         return unsupported / len(answer_nums)
 

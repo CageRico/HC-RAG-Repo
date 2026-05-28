@@ -1,7 +1,7 @@
 """
-Figure 7: Robustness Analysis — F1 vs. number of distractor documents.
+Figure 7: Robustness analysis - F1 vs. number of distractor passages.
 
-Injects N irrelevant documents into the retrieval context and measures
+Injects N irrelevant passages into the retrieval context and measures
 how each model's F1 degrades as noise increases.
 
 Usage:
@@ -306,7 +306,7 @@ def run_robustness(config_path, output_dir, max_samples, workers):
         "HC-RAG":      [],
         "Vanilla RAG": [],
         "Self-RAG":    [],
-        "GraphRAG":    [],
+        "Graph-RAG (entity)": [],
     }
 
     for n_dist in DISTRACTOR_COUNTS:
@@ -325,12 +325,12 @@ def run_robustness(config_path, output_dir, max_samples, workers):
 
         f1_graph = _eval_baseline(client, model, encoder, evaluator,
                                   samples, n_dist, workers, config, "graphrag")
-        print(f"  GraphRAG:    F1={f1_graph:.2f}")
+        print(f"  Graph-RAG (entity): F1={f1_graph:.2f}")
 
         results["HC-RAG"].append(round(f1_hcrag, 2))
         results["Vanilla RAG"].append(round(f1_vanilla, 2))
         results["Self-RAG"].append(round(f1_selfrag, 2))
-        results["GraphRAG"].append(round(f1_graph, 2))
+        results["Graph-RAG (entity)"].append(round(f1_graph, 2))
 
     out_path = os.path.join(output_dir, "robustness_results.json")
     with open(out_path, "w", encoding="utf-8") as f:

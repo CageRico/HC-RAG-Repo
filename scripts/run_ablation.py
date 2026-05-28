@@ -1,15 +1,16 @@
-"""
+﻿"""
 Ablation study for HC-RAG (Table 4 in the paper).
 
 Eight variants evaluated on Multi-Doc-2025 test set:
-  full          — HC-RAG (Full)
-  no_hierarchy  — w/o Three-Level Index  (flat dense retrieval over all chunks)
-  no_alignment  — w/o Cross-Modal Alignment  (skip loading align checkpoint)
-  no_tapex      — w/o TAPEX  (use FinBERT for table encoding too)
-  no_fusion     — w/o Query-Aware Fusion  (fixed λ = 0.5)
-  no_l1_edges   — w/o L1 Cross-Doc Edges  (L1 returns only top-1 doc)
-  no_l2_section — w/o L2 Section Nodes  (skip L2, go L1→L3 directly)
-  no_l3_table   — w/o L3 Table Structure  (ignore table cells, text-only L3)
+  full          -HC-RAG (Full)
+  no_hierarchy  -w/o Three-Level Index  (flat dense retrieval over all chunks)
+  no_alignment  -w/o Cross-Modal Alignment  (skip loading align checkpoint)
+  no_tapas      -w/o TAPAS  (use FinBERT for table encoding too)
+  no_tapex      -alias for no_tapas kept for backward compatibility
+  no_fusion     -w/o Query-Aware Fusion  (fixed lambda = 0.5)
+  no_l1_edges   -w/o L1 Cross-Doc Edges  (L1 returns only top-1 doc)
+  no_l2_section -w/o L2 Section Nodes  (skip L2, go L1->L3 directly)
+  no_l3_table   -w/o L3 Table Structure  (ignore table cells, text-only L3)
 
 Usage:
   python scripts/run_ablation.py                          # all variants, multidoc2025
@@ -37,8 +38,8 @@ import yaml
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.hierarchical_index import HierarchicalIndex, NodeType, BaseNode, DocumentNode, SectionNode
-from src.encoders import TextEncoder, TableEncoder, RetrievalEncoder
-from src.fusion import AdaptiveFusionNetwork, IntentType
+from src.encoders import TextEncoder, TableEncoder, RetrievalEncoder, load_alignment_checkpoint
+from src.fusion import AdaptiveFusionNetwork, IntentType, load_fusion_checkpoint
 from src.retriever import HierarchicalRetriever, ContextBuilder
 from src.generator import ResponseGenerator
 from src.evaluation import BenchmarkEvaluator
@@ -48,7 +49,7 @@ from transformers import AutoTokenizer
 
 
 # ---------------------------------------------------------------------------
-# Flat retriever — used by no_hierarchy variant
+# Flat retriever -used by no_hierarchy variant
 # ---------------------------------------------------------------------------
 
 class FlatRetriever:
@@ -146,18 +147,30 @@ def build_variant(variant: str, config: dict, device: torch.device):
                            local_files_only=local_files_only)
     text_enc.to(device).eval()
 
+    variant = "no_tapas" if variant == "no_tapex" else variant
+
     # ---- Table encoder ----
-    if variant == "no_tapex":
-        # Replace TAPEX with a second FinBERT instance
+    if variant == "no_tapas":
+        # Replace TAPAS with a second FinBERT instance
         table_enc = TextEncoder(model_name=cfg_models["text_encoder"],
                                 embedding_dim=cfg_align["embedding_dim"],
                                 local_files_only=local_files_only)
-        print("  [ablation] Table encoder: FinBERT (no TAPEX)")
+        print("  [ablation] Table encoder: FinBERT (no TAPAS)")
     else:
         table_enc = TableEncoder(model_name=cfg_models["table_encoder"],
                                  embedding_dim=cfg_align["embedding_dim"],
                                  local_files_only=local_files_only)
     table_enc.to(device).eval()
+
+    align_ckpt = os.path.join(cfg_paths["checkpoint_dir"], "align_checkpoint_best.pt")
+    if variant == "no_alignment":
+        print("  [ablation] Cross-modal alignment: DISABLED")
+    elif variant == "no_tapas":
+        print("  [ablation] Cross-modal alignment: skipped for no_tapas variant")
+    elif load_alignment_checkpoint(text_enc, table_enc, align_ckpt, map_location=device):
+        print(f"  [ablation] Alignment checkpoint: loaded from {align_ckpt}")
+    else:
+        print("  [ablation] Alignment checkpoint: not found")
 
     retrieval_enc = RetrievalEncoder(text_enc, table_enc)
 
@@ -182,19 +195,13 @@ def build_variant(variant: str, config: dict, device: torch.device):
         hidden_dim=cfg_fusion["hidden_dim"],
         num_intents=cfg_fusion["intent_classes"],
     )
-    fusion_net.to(device).eval()
-
-    # ---- Load alignment checkpoint (skip for no_alignment) ----
-    if variant != "no_alignment":
-        align_ckpt = os.path.join(cfg_paths["checkpoint_dir"], "align_checkpoint_best.pt")
-        if os.path.exists(align_ckpt):
-            # The alignment checkpoint trains projection heads, not the fusion gate.
-            # Loading it here is a no-op for the gate, but signals the variant correctly.
-            print(f"  [ablation] Alignment checkpoint: loaded")
+    if variant != "no_fusion":
+        fusion_ckpt = os.path.join(cfg_paths["checkpoint_dir"], "fusion_best.pt")
+        if load_fusion_checkpoint(fusion_net, fusion_ckpt, map_location=device):
+            print(f"  [ablation] Fusion checkpoint: loaded from {fusion_ckpt}")
         else:
-            print(f"  [ablation] Alignment checkpoint: not found (skipping)")
-    else:
-        print("  [ablation] Cross-modal alignment: DISABLED")
+            print("  [ablation] Fusion checkpoint: not found")
+    fusion_net.to(device).eval()
 
     # ---- Index ----
     index = HierarchicalIndex(cfg_index_cfg)
@@ -208,12 +215,12 @@ def build_variant(variant: str, config: dict, device: torch.device):
         print("  [ablation] Retriever: FLAT (no L1/L2)")
 
     elif variant == "no_fusion":
-        # Fixed λ = 0.5 — use FlatRetriever with fixed_lambda but keep hierarchy
+        # Fixed lambda = 0.5 -use FlatRetriever with fixed_lambda but keep hierarchy
         # We patch HierarchicalRetriever by monkey-patching _retrieve_semantic_units
         retriever = HierarchicalRetriever(index, retrieval_enc, fusion_net,
                                           intent_clf, cfg_index_cfg)
         _patch_fixed_lambda(retriever, fixed_lambda=0.5)
-        print("  [ablation] Fusion: FIXED λ=0.5")
+        print("  [ablation] Fusion: FIXED lambda=0.5")
 
     elif variant == "no_l1_edges":
         # L1 returns only the single best-scoring doc (no cross-doc edge traversal)
@@ -227,7 +234,7 @@ def build_variant(variant: str, config: dict, device: torch.device):
         retriever = HierarchicalRetriever(index, retrieval_enc, fusion_net,
                                           intent_clf, cfg_index_cfg)
         _patch_skip_l2(retriever)
-        print("  [ablation] L2: SKIPPED (L1 → L3 directly)")
+        print("  [ablation] L2: SKIPPED (L1 ->L3 directly)")
 
     elif variant == "no_l3_table":
         # L3: text chunks only, ignore table cells
@@ -237,7 +244,7 @@ def build_variant(variant: str, config: dict, device: torch.device):
         print("  [ablation] L3: TEXT ONLY (no table cells)")
 
     else:
-        # full / no_alignment / no_tapex — standard hierarchical retriever
+        # full / no_alignment / no_tapas -standard hierarchical retriever
         retriever = HierarchicalRetriever(index, retrieval_enc, fusion_net,
                                           intent_clf, cfg_index_cfg)
         print(f"  [ablation] Retriever: FULL hierarchical")
@@ -260,7 +267,7 @@ def build_variant(variant: str, config: dict, device: torch.device):
 # ---------------------------------------------------------------------------
 
 def _patch_fixed_lambda(retriever: HierarchicalRetriever, fixed_lambda: float):
-    """Replace adaptive gate with fixed λ."""
+    """Replace adaptive gate with fixed lambda."""
     original = retriever._retrieve_semantic_units
 
     def _fixed(query, query_embedding, sections, intent_probs):
@@ -308,7 +315,7 @@ def _patch_text_only_l3(retriever: HierarchicalRetriever):
         text_embeds_np = np.stack(text_embeds)
         sims = np.dot(text_embeds_np, query_embedding)
         ranked = np.argsort(sims)[::-1][:retriever.l3_k]
-        return [text_chunks[i] for i in ranked], 1.0  # λ=1 (text only)
+        return [text_chunks[i] for i in ranked], 1.0  # lambda=1 (text only)
 
     retriever._retrieve_semantic_units = _text_only
 
@@ -463,6 +470,7 @@ VARIANTS = [
     "full",
     "no_hierarchy",
     "no_alignment",
+    "no_tapas",
     "no_tapex",
     "no_fusion",
     "no_l1_edges",
@@ -474,7 +482,8 @@ VARIANT_LABELS = {
     "full":          "HC-RAG (Full)",
     "no_hierarchy":  "w/o Three-Level Index",
     "no_alignment":  "w/o Cross-Modal Alignment",
-    "no_tapex":      "w/o TAPEX",
+    "no_tapas":      "w/o TAPAS",
+    "no_tapex":      "w/o TAPAS",
     "no_fusion":     "w/o Query-Aware Fusion",
     "no_l1_edges":   "w/o L1 Cross-Doc Edges",
     "no_l2_section": "w/o L2 Section Nodes",
@@ -545,3 +554,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

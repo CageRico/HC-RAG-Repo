@@ -4,13 +4,65 @@ Cross-Modal Dual-Stream Encoding with Contrastive Alignment
 - Table Encoder: TAPAS with financial table understanding
 """
 
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel, AutoTokenizer
 import numpy as np
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Union
 from dataclasses import dataclass
+
+
+def _strip_module_prefix(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Remove a leading DataParallel 'module.' prefix when present."""
+    cleaned = {}
+    for key, value in state_dict.items():
+        cleaned[key[7:]] = value if key.startswith("module.") else value
+    return cleaned
+
+
+def extract_alignment_projection_state(
+    checkpoint: Dict[str, Any],
+) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    """
+    Extract text/table projection-head weights from an alignment checkpoint.
+
+    The training script stores a projection-only aligner with keys such as:
+      text_proj.0.weight, text_proj.0.bias, text_proj.1.weight, ...
+      table_proj.0.weight, table_proj.0.bias, table_proj.1.weight, ...
+    """
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    state_dict = _strip_module_prefix(state_dict)
+
+    text_state = {}
+    table_state = {}
+    for key, value in state_dict.items():
+        if key.startswith("text_proj."):
+            text_state[key.replace("text_proj.", "", 1)] = value
+        elif key.startswith("table_proj."):
+            table_state[key.replace("table_proj.", "", 1)] = value
+    return text_state, table_state
+
+
+def load_alignment_checkpoint(
+    text_encoder: nn.Module,
+    table_encoder: nn.Module,
+    checkpoint_path: str,
+    map_location: Union[str, torch.device] = "cpu",
+) -> bool:
+    """Load alignment-trained projection heads into the runtime encoders."""
+    if not checkpoint_path or not os.path.exists(checkpoint_path):
+        return False
+
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+    text_state, table_state = extract_alignment_projection_state(checkpoint)
+    if not text_state or not table_state:
+        raise ValueError(f"No projection heads found in alignment checkpoint: {checkpoint_path}")
+
+    text_encoder.projection.load_state_dict(text_state)
+    table_encoder.projection.load_state_dict(table_state)
+    return True
 
 
 class TextEncoder(nn.Module):
