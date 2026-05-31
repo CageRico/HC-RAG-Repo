@@ -35,6 +35,9 @@ class HierarchicalRetriever:
         self.l1_k = config.get("l1_document_k", 5)
         self.l2_k = config.get("l2_section_k", 10)
         self.l3_k = config.get("l3_semantic_k", 20)
+        self.use_sequential_expansion = config.get("use_sequential_expansion", True)
+        self.sequential_hops = max(0, config.get("sequential_hops", 1))
+        self.sequential_neighbors_per_seed = max(0, config.get("sequential_neighbors_per_seed", 2))
         
         # FAISS indices for efficient similarity search (optional)
         self.text_faiss_index = None
@@ -253,6 +256,7 @@ class HierarchicalRetriever:
         quota_per_doc = max(1, math.ceil(self.l2_k / n_docs))
 
         selected = []
+        score_by_section_id: Dict[str, float] = {}
         for doc in documents:
             doc_sections = self.index.get_document_sections(doc.node_id)
             if not doc_sections:
@@ -279,13 +283,60 @@ class HierarchicalRetriever:
                 sim = float(np.dot(sec_emb, query_embedding) /
                             (np.linalg.norm(sec_emb) * np.linalg.norm(query_embedding) + 1e-9))
                 sec_scores.append((section, sim))
+                score_by_section_id[section.node_id] = sim
 
             sec_scores.sort(key=lambda x: x[1], reverse=True)
             selected.extend(sec_scores[:quota_per_doc])
 
         # Re-rank the per-doc winners globally and return top l2_k
         selected.sort(key=lambda x: x[1], reverse=True)
-        return [sec for sec, _ in selected[:self.l2_k]]
+        seed_sections = [sec for sec, _ in selected[:self.l2_k]]
+        return self._expand_sections_with_sequential_neighbors(seed_sections, score_by_section_id)
+
+    def _expand_sections_with_sequential_neighbors(
+        self,
+        seed_sections: List[SectionNode],
+        score_by_section_id: Dict[str, float],
+    ) -> List[SectionNode]:
+        """Expand top sections with local sequential neighbors from the same 10-K."""
+        if not seed_sections:
+            return []
+
+        if (not self.use_sequential_expansion or self.sequential_hops <= 0 or
+                self.sequential_neighbors_per_seed <= 0):
+            return seed_sections
+
+        expanded: List[SectionNode] = []
+        seen = set()
+        max_sections = self.l2_k + self.sequential_neighbors_per_seed * min(len(seed_sections), self.l2_k)
+
+        for section in seed_sections:
+            if section.node_id not in seen:
+                expanded.append(section)
+                seen.add(section.node_id)
+
+            neighbors = self.index.get_sequential_neighbors(section.node_id, hops=self.sequential_hops)
+            neighbors.sort(
+                key=lambda sec: (
+                    -score_by_section_id.get(sec.node_id, float("-inf")),
+                    sec.metadata.get("start_pos", 0),
+                )
+            )
+
+            added = 0
+            for neighbor in neighbors:
+                if neighbor.node_id in seen:
+                    continue
+                expanded.append(neighbor)
+                seen.add(neighbor.node_id)
+                added += 1
+                if added >= self.sequential_neighbors_per_seed or len(expanded) >= max_sections:
+                    break
+
+            if len(expanded) >= max_sections:
+                break
+
+        return expanded
     
     def _ensure_doc_coverage(self, evidence_nodes: List[BaseNode],
                               relevant_docs: List[DocumentNode],

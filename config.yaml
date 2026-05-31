@@ -14,6 +14,9 @@ index:
   l1_document_k: 5
   l2_section_k: 10
   l3_semantic_k: 20
+  use_sequential_expansion: true
+  sequential_hops: 1
+  sequential_neighbors_per_seed: 2
   chunk_size: 512
   chunk_overlap: 50
 

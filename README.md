@@ -35,9 +35,9 @@ The file and directory names are kept in the code paths so that local deployment
 
 HC-RAG contains four main implementation layers:
 
-1. `src/hierarchical_index.py`: typed document, section, text evidence, and table evidence nodes.
+1. `src/hierarchical_index.py`: typed document, section, text evidence, and table evidence nodes, including sequential section edges inside each 10-K.
 2. `src/encoders.py`: FinBERT text encoder, TAPAS table encoder, and contrastive text-table alignment utilities.
-3. `src/retriever.py`: document-level, section-level, and evidence-level hierarchical retrieval with query-aware text-table routing.
+3. `src/retriever.py`: document-level, section-level, and evidence-level hierarchical retrieval with query-aware text-table routing and section-neighbor expansion.
 4. `src/generator.py`: OpenAI-compatible generation layer using the configured generator. The default is `deepseek-v4-flash`.
 
 The semantic intent labels are:
@@ -102,6 +102,17 @@ Before offline runs, download/cache the configured FinBERT and TAPAS models loca
 models:
   local_files_only: false
 ```
+
+The hierarchical index configuration also includes local structural expansion at the section level:
+
+```yaml
+index:
+  use_sequential_expansion: true
+  sequential_hops: 1
+  sequential_neighbors_per_seed: 2
+```
+
+When enabled, `scripts/build_index.py` creates explicit `Section -> Section` sequential edges based on each filing's `start_pos` order, and `src/retriever.py` can expand top-ranked sections to their immediate neighbors during L2 retrieval.
 
 ## Data Preparation
 

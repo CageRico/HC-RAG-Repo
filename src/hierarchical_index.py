@@ -132,6 +132,9 @@ class HierarchicalIndex:
         self.section_to_chunks: Dict[str, List[str]] = defaultdict(list)
         # Document cross-doc relations
         self.cross_doc_edges: Dict[str, List[str]] = defaultdict(list)
+        # Sequential section relations within a document
+        self.section_next: Dict[str, str] = {}
+        self.section_prev: Dict[str, str] = {}
         
     def add_document(self, doc_node: DocumentNode) -> str:
         """Add L1 Document Node"""
@@ -177,7 +180,13 @@ class HierarchicalIndex:
     
     def add_sequential_edge(self, prev_section_id: str, next_section_id: str):
         """Add sequential edge between sections"""
+        if prev_section_id == next_section_id:
+            return
+        if self.section_next.get(prev_section_id) == next_section_id:
+            return
         self._add_edge(prev_section_id, next_section_id, EdgeType.SEQUENTIAL)
+        self.section_next[prev_section_id] = next_section_id
+        self.section_prev[next_section_id] = prev_section_id
     
     def _add_edge(self, from_id: str, to_id: str, edge_type: EdgeType, metadata: Dict = None):
         """Add edge between nodes"""
@@ -223,6 +232,63 @@ class HierarchicalIndex:
         for rel_doc_id in self.cross_doc_edges.get(doc_id, []):
             related.append(self.doc_nodes[rel_doc_id])
         return related
+
+    def get_next_section(self, section_id: str) -> Optional[SectionNode]:
+        """Get the next sequential section in the same document."""
+        next_id = self.section_next.get(section_id)
+        if not next_id:
+            return None
+        return self.section_nodes.get(next_id)
+
+    def get_previous_section(self, section_id: str) -> Optional[SectionNode]:
+        """Get the previous sequential section in the same document."""
+        prev_id = self.section_prev.get(section_id)
+        if not prev_id:
+            return None
+        return self.section_nodes.get(prev_id)
+
+    def get_sequential_neighbors(self, section_id: str, hops: int = 1) -> List[SectionNode]:
+        """Get previous/next section neighbors up to the given hop distance."""
+        if hops <= 0:
+            return []
+
+        neighbors: List[SectionNode] = []
+        seen = {section_id}
+        prev_id = section_id
+        next_id = section_id
+
+        for _ in range(hops):
+            prev_id = self.section_prev.get(prev_id)
+            next_id = self.section_next.get(next_id)
+
+            candidates = [cand for cand in (prev_id, next_id) if cand and cand not in seen]
+            for cand in candidates:
+                node = self.section_nodes.get(cand)
+                if node:
+                    neighbors.append(node)
+                    seen.add(cand)
+
+        return neighbors
+
+    def _rebuild_sequential_maps(self):
+        """Rebuild next/prev section maps from stored sequential edges."""
+        self.section_next = {}
+        self.section_prev = {}
+        for from_id, edge_list in self.edges.items():
+            for to_id, edge_type in edge_list:
+                if edge_type == EdgeType.SEQUENTIAL:
+                    self.section_next[from_id] = to_id
+                    self.section_prev[to_id] = from_id
+
+    def _reconstruct_sequential_edges_from_sections(self):
+        """Reconstruct sequential edges from per-document section order."""
+        for doc_id, section_ids in self.doc_to_sections.items():
+            ordered_ids = sorted(
+                section_ids,
+                key=lambda sec_id: self.section_nodes[sec_id].metadata.get("start_pos", 0),
+            )
+            for prev_section_id, next_section_id in zip(ordered_ids, ordered_ids[1:]):
+                self.add_sequential_edge(prev_section_id, next_section_id)
     
     def filter_by_metadata(self, node_type: NodeType, **kwargs) -> List[BaseNode]:
         """Filter nodes by metadata attributes"""
@@ -256,7 +322,9 @@ class HierarchicalIndex:
             "table_cell_nodes": self.table_cell_nodes,
             "doc_to_sections": dict(self.doc_to_sections),
             "section_to_chunks": dict(self.section_to_chunks),
-            "cross_doc_edges": dict(self.cross_doc_edges)
+            "cross_doc_edges": dict(self.cross_doc_edges),
+            "section_next": self.section_next,
+            "section_prev": self.section_prev,
         }
         with open(path, 'wb') as f:
             pickle.dump(data, f)
@@ -275,6 +343,12 @@ class HierarchicalIndex:
         self.doc_to_sections = defaultdict(list, data["doc_to_sections"])
         self.section_to_chunks = defaultdict(list, data["section_to_chunks"])
         self.cross_doc_edges = defaultdict(list, data["cross_doc_edges"])
+        self.section_next = data.get("section_next", {})
+        self.section_prev = data.get("section_prev", {})
+        if not self.section_next and not self.section_prev:
+            self._rebuild_sequential_maps()
+        if not self.section_next and not self.section_prev:
+            self._reconstruct_sequential_edges_from_sections()
 
 
 class TOCParser:

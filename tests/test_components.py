@@ -62,6 +62,25 @@ class TestHierarchicalIndex(unittest.TestCase):
         self.assertEqual(len(related), 1)
         self.assertEqual(related[0].node_id, "doc2")
 
+    def test_sequential_section_neighbors(self):
+        doc = DocumentNode("doc1", "TestCorp", "2024", "Tech")
+        self.index.add_document(doc)
+        sec1 = SectionNode("sec1", "Item 1", 1, 10, 20)
+        sec2 = SectionNode("sec2", "Item 1A", 1, 30, 40)
+        sec3 = SectionNode("sec3", "Item 7", 1, 50, 60)
+        self.index.add_section(sec1, "doc1")
+        self.index.add_section(sec2, "doc1")
+        self.index.add_section(sec3, "doc1")
+        self.index.add_sequential_edge("sec1", "sec2")
+        self.index.add_sequential_edge("sec2", "sec3")
+
+        self.assertEqual(self.index.get_next_section("sec1").node_id, "sec2")
+        self.assertEqual(self.index.get_previous_section("sec3").node_id, "sec2")
+        self.assertEqual(
+            [node.node_id for node in self.index.get_sequential_neighbors("sec2", hops=1)],
+            ["sec1", "sec3"],
+        )
+
 
 class TestUtils(unittest.TestCase):
     def test_chunk_text(self):

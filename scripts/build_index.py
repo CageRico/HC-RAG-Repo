@@ -131,6 +131,7 @@ class IndexBuilder:
 
         total_chunks = 0
         total_tables = 0
+        ordered_sections = []
 
         for section_info in sections:
             section_id = f"{doc_id}_{section_info['item_num']}"
@@ -142,6 +143,7 @@ class IndexBuilder:
                 end_pos=section_info.get('end_pos', 0)
             )
             self.index.add_section(section_node, doc_id)
+            ordered_sections.append((section_node.metadata["start_pos"], section_id))
             
             # Process section content: split into text chunks (cap at 20 per section)
             text_content = section_info.get('text', '')[:self.chunk_size * 20]
@@ -203,9 +205,15 @@ class IndexBuilder:
 
                 for cell_node in cell_nodes:
                     self.index.add_table_cell(cell_node, section_id)
+
+        ordered_sections.sort(key=lambda item: item[0])
+        sequential_edges = 0
+        for (_, prev_section_id), (_, next_section_id) in zip(ordered_sections, ordered_sections[1:]):
+            self.index.add_sequential_edge(prev_section_id, next_section_id)
+            sequential_edges += 1
         
         print(f"Added document {doc_id}: {total_chunks} text chunks, "
-              f"{total_tables} tables processed")
+              f"{total_tables} tables processed, {sequential_edges} sequential edges")
     
     def add_cross_doc_relations(self, industry_group: str, doc_ids: List[str]):
         """Add same-industry cross-document edges"""
